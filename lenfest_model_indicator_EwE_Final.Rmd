@@ -3,7 +3,7 @@ title: "Lenfest model indicators - calculation for EwE models"
 author: "Linda Thomas, Camilla Novaglio, Beth Fulton & Javier Porobic"
 date: "19/07/2021"
 output: html_document
-editor_options: 
+editor_options:
 chunk_output_type: console
 ---
 
@@ -18,24 +18,25 @@ rm(list=ls())
 
 ```
 
-# load libraries 
+# load libraries
 Below are the libraries to be loaded - first it runs the function that will check
 # if the library is installed or not and if not then installs it so ready for usechecks if installed or not and if not then installs
 ```{r}
-install_load <- function (this_package)  {   
-
+install_load <- function (this_package)  {
    package <- c(this_package)
    if(package %in% rownames(installed.packages()))
         do.call('library', list(package))
-
     # if package is not installed locally, download, then load
     else {
-        install.packages(package)
+        install.packages(package, dependencies=TRUE)
          do.call("library", list(package))
     }
 }
+## if you updated R you will want to run this code just to avoid conflicts with old packages
+## this step can take few minutes
+install.packages(installed.packages())
 
-### load/install libraries ###
+### load/install packages ###
 # Data handling and table reshaping
 install_load("tidyverse")
 install_load("reshape2")
@@ -68,7 +69,7 @@ install_load("cowplot")
 install_load("ggpubr")
 install_load("matrixStats")
 install_load("drc")
-install_load("viridis") 
+install_load("viridis")
 install_load("gridExtra")
 install_load("cowplot")
 #Network related
@@ -78,6 +79,7 @@ install_load("qgraph")
 install_load("visNetwork")
 install_load("intergraph")
 install_load("tidygraph")
+install_load("coda")
 install_load("network")
 install_load("igraph")
 
@@ -85,11 +87,11 @@ install_load("igraph")
 
 ```
 
-# Data collection  
-Please set the working directory to where the model output files are.  
+# Data collection
+Please set the working directory to where the model output files are.
 
-Additional information to be provided by the modeller:  
-* A list of species used in your model in csv format (e.g ID, Group). This can be taken from the model parameters file used to set up the model.  
+Additional information to be provided by the modeller:
+* A list of species used in your model in csv format (e.g ID, Group). This can be taken from the model parameters file used to set up the model.
 * L inf for each species in the model. This is taken from the model parameter file. Calculate the mean L infinity for the species group.
 * size categories for each species in csv format (e.g. species_id, Group, size). The information is taken from the model parameters file. Categorise each group into L, S or split depending on total length (small = <30cm, large = >50cm, SPLIT = 30-50cm).
 
@@ -107,17 +109,17 @@ chl_from_file <- 0
 bo_in_same_file <- 0
 bo_conservative <- 1
 bo_yr_row <- 0 # Set to 0 if you want the final row of the file
-bo_header_row_ID <- 14   # this needs to change between EwE versions and if use observation csv
+bo_header_row_ID <- 10   # this needs to change between EwE versions and if use observation csv
 
 # Area of model in km2 (whole of SESSF = 3700000), EBS smaller
 area_model <- 36500
 
 # Define the relevant directories - all these paths (including the output directories) must already exist
-mainDir <- "/Users/ful083/Work/Lenfest_EBFM/case_studies/SE_Aust/EwE_model_output"
+mainDir <- "/home/por07g/Documents/Projects/Lenfest/Indicators_tool"
 InputsubDir <- "EBS output files/ecosim_Climate control with fishing"
 OutsubDirStep1 <- "Lenfest_output"
-OutsubDirStep2 <- "EBS - ecosim_Climate control with fishing"
-BosubDir <- "EBS output files/EBS_2021_version/NoFishing"
+OutsubDirStep2 <- "EBS-ecosim_Climate_control_with_fishing"
+BosubDir <- "EBS output files/ecosim_2021 baseline"
 
 ```
 
@@ -130,8 +132,9 @@ OutDir <- paste(mainDir,"/",OutsubDirStep3,sep="")
 skip_this  <- header_row_ID - 1
 
 # Create output directory if required
-ifelse(!dir.exists(file.path(mainDir, OutsubDirStep1)), dir.create(file.path(mainDir, OutsubDirStep1)), FALSE)
-ifelse(!dir.exists(file.path(mainDir, OutsubDirStep2)), dir.create(file.path(mainDir, OutsubDirStep2)), FALSE)
+if(!dir.exists(file.path(mainDir, OutsubDirStep1))) dir.create(file.path(mainDir, OutsubDirStep1))
+if(!dir.exists(file.path(mainDir, OutsubDirStep2))) dir.create(file.path(mainDir, OutsubDirStep2))
+if(!dir.exists(file.path(OutDir))) dir.create(file.path(OutDir))
 
 # read in EwE data
 # find model start year from an output file
@@ -169,8 +172,8 @@ SpeciesNames <- id$Group
 
 # fleet id - put names
 idf <- read.csv("Fleet_ID.csv") # You will need to put in the name of your species list csv file here
-nFName <- length(unique(idf$Fleet.name))
-FleetNames <- idf$Fleet.name
+nFName <- length(unique(idf$FleetName))
+FleetNames <- idf$FleetName
 
 # mortality data
 MortFile <- paste(mainDir,"/",InputsubDir,"/","mort-fleet-group_annual.csv",sep="")
@@ -194,16 +197,16 @@ names(weight_annual)[1] <- 'Year'   # changes the name of the first column to ye
 if (chl_from_file > 0) {
   ChlFile <- paste(mainDir,"/",InputsubDir,"/","chl.csv",sep="")   # Assumes a format of Year chl
   dfChl <- read.csv(ChlFile, header = T, check.names = FALSE)
-  
+
   # make sure has columns Year and Chl
 }
 
 # convert data into a data frame and pivot tables to tidy
-bio <- as.data.frame(biomass) %>% 
+bio <- as.data.frame(biomass) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "biomass_tonnes")
 bio$biomass_tonnes <- area_model * bio$biomass_tonnes
 
-cat <- as.data.frame(catch) %>% 
+cat <- as.data.frame(catch) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "catch_tonnes")
 cat$catch_tonnes <- area_model * cat$catch_tonnes
 
@@ -213,26 +216,26 @@ aggland <- landings %>%
 aggland$landings_tonnes <- area_model * aggland$landings_tonnes
 aggland$species_id <- as.character(aggland$species_id)
 
-tl <- as.data.frame(tl_annual) %>% 
+tl <- as.data.frame(tl_annual) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "trophic_level")
 
-land <- as.data.frame(landings_fleet) %>% 
+land <- as.data.frame(landings_fleet) %>%
   dplyr::rename(species_id = group) %>% # rename group to species_id
   dplyr::rename(fleet_landing_tonnes = value) %>% # rename value to landing_tonnes
-  mutate(species_id = as.character(species_id)) %>% 
+  mutate(species_id = as.character(species_id)) %>%
   unique()
 land$fleet_landing_tonnes <- area_model * land$fleet_landing_tonnes
 
-removals <- as.data.frame(removals_fleet) %>% 
+removals <- as.data.frame(removals_fleet) %>%
   dplyr::rename(species_id = group) %>% # rename group to species_id
   dplyr::rename(fleet_removals_tonnes = value) %>% # rename value to landing_tonnes
-  mutate(species_id = as.character(species_id)) %>% 
+  mutate(species_id = as.character(species_id)) %>%
   unique()
 removals$fleet_removals_tonnes <- area_model * removals$fleet_removals_tonnes
 
 # add in species names to the data frame
 ## change the COL_ID to species_id so can join
-id2 <- id %>% 
+id2 <- id %>%
   dplyr::rename(species_id = ID) %>%  # specify that the dplyr rename is the function you want & rename ID to species_id
 #    select(-COL_ID) %>% # removes the COL_ID column
   mutate(species_id = as.character(species_id)) %>% # change to character so same as other data frame
@@ -251,8 +254,8 @@ df <- full_join(df1, id2) # data frame with biomass, catch and species names
 df3tmp <- full_join(land, removals)
 
 # Join landings and species names
-df3tmpA <- full_join(df3tmp, id2) 
-df3 <- merge(df3tmpA, idf, by.x = "fleet", by.y = "ID") 
+df3tmpA <- full_join(df3tmp, id2)
+df3 <- merge(df3tmpA, idf, by.x = "fleet", by.y = "ID")
 
 # add species names to trophic level data
 tl_species <- full_join(tl, id2)
@@ -271,22 +274,22 @@ if(bo_in_same_file < 1){
   MoMortFile <- paste(mainDir,"/",BosubDir,"/","mortality_annual.csv",sep="")
   MoMort <- read.csv(MoMortFile, header = T, skip = bo_skip_this, check.names = FALSE)
   names(BoBio)[1] <- 'Year'
-  names(MoMort)[1] <- 'Year' 
+  names(MoMort)[1] <- 'Year'
   if(bo_yr_row < 1) {
     bo_yr_row <- length(BoBio[,1])
     RefB <- BoBio[bo_yr_row,]
     RefM <- MoMort[bo_yr_row,]
-    
+
   } else {
     RefB <- BoBio[bo_yr_row,]
     RefM <- MoMort[bo_yr_row,]
   }
-  
+
   if(bo_conservative > 0) {
-    altB1 <- as.data.frame(RefB) %>% 
+    altB1 <- as.data.frame(RefB) %>%
       pivot_longer(-Year, names_to = "species_id", values_to = "RefB")
     altBtmp <- biomass[1,]
-    altB2 <- as.data.frame(altBtmp) %>% 
+    altB2 <- as.data.frame(altBtmp) %>%
       pivot_longer(-Year, names_to = "species_id", values_to = "RefB")
     altB1$Year <- RefM[1,1]
     altB2$Year <- RefM[1,1]
@@ -295,23 +298,23 @@ if(bo_in_same_file < 1){
     dfRefB <- dftmp
     dfRefB <- subset (dfRefB, select = -c(Year, RefB.x, RefB.y))
   } else {
-    dfRefB <- as.data.frame(RefB) %>% 
+    dfRefB <- as.data.frame(RefB) %>%
       pivot_longer(-Year, names_to = "species_id", values_to = "RefB")
     dfRefB <- subset (dfRefB, select = -c(Year))
   }
-  dfRefM <- as.data.frame(RefM) %>% 
+  dfRefM <- as.data.frame(RefM) %>%
     pivot_longer(-Year, names_to = "species_id", values_to = "RefM")
   dfRefM <- subset (dfRefM, select = -c(Year))
-  
+
 } else {
   # Assumes has sensible reference year rown number
   RefB <- biomass[bo_yr_row,]
   RefM <- mortality[bo_yr_row,]
-  
-  dfRefB <- as.data.frame(RefB) %>% 
+
+  dfRefB <- as.data.frame(RefB) %>%
     pivot_longer(-Year, names_to = "species_id", values_to = "RefB")
   dfRefB <- subset (dfRefB, select = -c(Year))
-  dfRefM <- as.data.frame(RefM) %>% 
+  dfRefM <- as.data.frame(RefM) %>%
     pivot_longer(-Year, names_to = "species_id", values_to = "RefM")
   dfRefM <- subset (dfRefM, select = -c(Year))
 
@@ -328,18 +331,17 @@ dfRef$RefBo <- area_model * dfRef$RefB
 # written by Beth
 
 # data to use
-#head(df)
 # Species biomass time series - so cna check rest makes sense
 this_nSPName <-length(unique(df$Group))
 this_SpeciesNames <- unique(df$Group)
 dftmp <- merge(df, dfRef, by = c("species_id"))
-  
-# plot out catch for each species for each fleet 
+
+# plot out catch for each species for each fleet
 nLoop <- ceiling (this_nSPName / nPanel)
 counter1 <- 1
 counter2 <- nPanel
 for (i in 1:nLoop) {
-  check_name <- this_SpeciesNames[counter1:counter2]  
+  check_name <- this_SpeciesNames[counter1:counter2]
   extractdf <- dplyr::filter(dftmp, Group %in% check_name)
   outfilepng <- paste("biomass",i,"-page",i,".png",sep="")
   p <- ggplot(extractdf, aes(x = Year, y = biomass_tonnes)) +
@@ -357,16 +359,13 @@ for (i in 1:nLoop) {
   counter1 <- counter1 + nPanel
   counter2 <- counter2 + nPanel
 }
-
 ```
 
-## Catch time series (per species per gear) - commercial, recreational, artisinal - EwE  
+## Catch time series (per species per gear) - commercial, recreational, artisinal - EwE
 ```{r}
 # written by Beth
 
 # data to use
-head(df3)
-
 # subset out data by fleet
 # to see how many fleets
 df4 <- na.omit(df3)
@@ -374,21 +373,21 @@ tmp <- unique(df4[c("fleet")])
 nFleet <- max(tmp[,1])
 
 for (i in 1:nFleet) {
-  
+
   txttitle <- paste("Catch time series by species by fleet ",i,sep="")
   catch_fi <- df3 %>% dplyr::filter(fleet == i)
   this_fleet <-idf[i,2]
   this_nSPName <-length(unique(catch_fi$Group))
   this_SpeciesNames <- unique(catch_fi$Group)
-  
-  # plot out catch for each species for each fleet 
+
+  # plot out catch for each species for each fleet
   nLoop <- ceiling (this_nSPName / nPanel)
   counter1 <- 1
   counter2 <- nPanel
   counter3 <- 1
   for (iLoop in 1:nLoop) {
-    
-    check_name <- this_SpeciesNames[counter1:counter2]  
+
+    check_name <- this_SpeciesNames[counter1:counter2]
     extractC <- dplyr::filter(catch_fi, Group %in% check_name)
     lenC <- dim(extractC)
     l1 <- lenC[1]
@@ -411,12 +410,12 @@ for (i in 1:nFleet) {
       ggsave(filename = outfilepng, plot = catch_pi, path = OutDir)
       counter3 <- counter3 + 1
     }
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
   }
-  
-  
+
+
 }
 
 ```
@@ -425,11 +424,6 @@ for (i in 1:nFleet) {
 PCA run on the output file (catch_fleet_group_annual)
 ```{r}
 # written by Beth
-
-# data to use
-#head(df3)
-#head(df)
-
 # Recast so the species are the columns - starting by getting catch per year from old df3
 #CdataS <- df3 %>%
 #  group_by(Year, Group) %>%
@@ -471,15 +465,15 @@ OutFilename <- paste(OutDir,"/PCA_VarExplained.png",sep="")
 png(OutFilename, 1200, 800)
 plot(pl.pca, type="lines")
 dev.off()
-  
+
 # Plot biplot
-outBiplot <- paste(OutDir,"/PCA_Biplot_Thru_Time.png",sep="")   
+outBiplot <- paste(OutDir,"/PCA_Biplot_Thru_Time.png",sep="")
 dfPCA <- data.frame(comp1=pl.pca$scores[,1],
                  comp2=pl.pca$scores[,2])
 ggplot(data = dfPCA, aes(x=comp1, y=comp2, group=1)) +
     geom_point(size=5, aes(colour=rownames(pl.pca$scores))) +
     geom_path(size = 0.2) +
-    geom_text(label=rownames(pl.pca$scores)) + 
+    geom_text(label=rownames(pl.pca$scores)) +
     theme(legend.position="none")
 ggsave(file=outBiplot)
 
@@ -520,7 +514,7 @@ res.hcpc <- HCPC(res.pca4, graph = FALSE)
 
 OutFilename <- paste(OutDir,"/PCA_score_dendrogram.png",sep="")
 png(OutFilename, 1200, 800)
-fviz_dend(res.hcpc, 
+fviz_dend(res.hcpc,
           cex = 0.7,                     # Label size
           palette = "jco",               # Color palette see ?ggpubr::ggpar
           rect = TRUE, rect_fill = TRUE, # Add rectangle around groups
@@ -557,21 +551,17 @@ df3$discard_tonnes <- df3$fleet_removals_tonnes - df3$fleet_landing_tonnes
 # Create new dataframes that is total discards across all fleets (per species and year) and across all species (per fleet)
 discardsBySpecies <- df3 %>%
   group_by(Year, species_id, Group) %>%
-  dplyr::summarise(TotalDiscards = sum(discard_tonnes))
+  dplyr::summarise(TotalDiscards = sum(discard_tonnes, na.rm = TRUE))
 
 discardsByFleet <- df3 %>%
-  group_by(Year, Fleet.name) %>%
-  dplyr::summarise(TotalDiscards = sum(discard_tonnes))
-
-# Convert any NA with zeros
-discardsBySpecies[is.na(discardsBySpecies)] <- 0
-discardsByFleet[is.na(discardsByFleet)] <- 0
+  group_by(Year, FleetName) %>%
+  dplyr::summarise(TotalDiscards = sum(discard_tonnes, na.rm = TRUE))
 
 # Filter out any years that don't make sense
 discardsBySpecies <- discardsBySpecies %>% dplyr::filter(Year > 0)
 discardsByFleet <- discardsByFleet %>% dplyr::filter(Year > 0)
 
-# check the maximum discard  
+# check the maximum discard
 ymax <- 1.05 * max(discardsBySpecies$TotalDiscards, na.rm = TRUE)
 ymin <- 0.95 * min(discardsBySpecies$TotalDiscards, na.rm = TRUE)
 if (ymin < 0) { ymin <- 0 }
@@ -582,12 +572,12 @@ counter1 <- 1
 counter2 <- nPanel
 for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Total_Discards_per_species-page",iLoop,".png",sep="")
-    check_name <- SpeciesNames[counter1:counter2]  
+    check_name <- SpeciesNames[counter1:counter2]
     extractC <- dplyr::filter(discardsBySpecies, Group %in% check_name)
     ggplot(extractC, aes(x = Year,  y = TotalDiscards))+
       geom_line(color = tscolor, size = 1.2) +
       #geom_point() +
-      #ylim(ymin, ymax)+ 
+      #ylim(ymin, ymax)+
       theme(legend.position = "none")+
       labs(
         title = "Discard tonnes of species by species",
@@ -598,12 +588,12 @@ for (iLoop in 1:nLoop) {
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 }
 
-# check the maximum discard  
+# check the maximum discard
 ymax <- 1.05 * max(discardsByFleet$TotalDiscards, na.rm = TRUE)
 ymin <- 0.95 * min(discardsByFleet$TotalDiscards, na.rm = TRUE)
 if (ymin < 0) { ymin <- 0 }
@@ -614,23 +604,23 @@ counter1 <- 1
 counter2 <- nPanel
 for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Total_Discards_per_fleet-page",iLoop,".png",sep="")
-    check_name <- FleetNames[counter1:counter2]  
-    extractC <- dplyr::filter(discardsByFleet, Fleet.name %in% check_name)
+    check_name <- FleetNames[counter1:counter2]
+    extractC <- dplyr::filter(discardsByFleet, FleetName %in% check_name)
     ggplot(extractC, aes(x = Year,  y = TotalDiscards))+
       geom_line(color = tscolor, size = 1.2) +
       #geom_point() +
-      #ylim(ymin, ymax)+ 
+      #ylim(ymin, ymax)+
       theme(legend.position = "none") +
       labs(
         title = "Discarded tonnes of catch by fleet",
         x = "Year",
         y = "Amount of catch discarded (tonnes)"
       ) +
-    facet_wrap(~ Fleet.name, scales = 'free_y', ncol = 6) +
+    facet_wrap(~ FleetName, scales = 'free_y', ncol = 6) +
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 }
@@ -638,9 +628,9 @@ for (iLoop in 1:nLoop) {
 
 ```
 
-## Discard rate  
+## Discard rate
 Dependent on discard time series  (discard = catch-landings)
-discard_rate = (catch-landings)/catch  
+discard_rate = (catch-landings)/catch
 ```{r}
 # collect data
 head(df3)
@@ -648,12 +638,11 @@ head(df3)
 # calculate discard rate
 df3$discard_rate <- df3$discard_tonnes / df3$fleet_removals_tonnes
 
-discard_stats <- df3 %>% 
-  dplyr::group_by(Fleet.name, Year) %>% 
-  dplyr::summarise(discard_mean = mean(discard_rate, na.rm = TRUE), 
+discard_stats <- df3 %>% dplyr::group_by(FleetName, Year) %>%
+  dplyr::summarise(discard_mean = mean(discard_rate, na.rm = TRUE),
                    discard_mean_sd = sd(discard_rate, na.rm = TRUE),
-                   discard_n = n()) %>% 
-  dplyr::filter(!is.na(Fleet.name))
+                   discard_n = n()) %>%
+  dplyr::filter(!is.na(FleetName))
 
 # Reset any NAs (std deviations when n is 1)
 discard_stats[is.na(discard_stats)] <- 0
@@ -671,12 +660,12 @@ counter1 <- 1
 counter2 <- nPanel
 for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Discard_rates_per_fleet-page",iLoop,".png",sep="")
-    check_name <- FleetNames[counter1:counter2]  
-    extractC <- dplyr::filter(discard_stats, Fleet.name %in% check_name)
+    check_name <- FleetNames[counter1:counter2]
+    extractC <- dplyr::filter(discard_stats, FleetName %in% check_name)
     ggplot(extractC, aes(x = Year,  y = discard_mean))+
       geom_line(color = tscolor, size = 1.2) +
       #geom_point() +
-      #ylim(ymin, ymax)+ 
+      #ylim(ymin, ymax)+
       geom_line(aes(y = max_CI, color=tscolor), linetype="twodash") +
       geom_line(aes(y = min_CI, color=tscolor), linetype="twodash") +
       theme(legend.position = "none")+
@@ -685,11 +674,11 @@ for (iLoop in 1:nLoop) {
         x = "Year",
         y = "Discard rates (proportion)"
       ) +
-    facet_wrap(~ Fleet.name, scales = 'free_y', ncol = 6) +
+    facet_wrap(~ FleetName, scales = 'free_y', ncol = 6) +
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 }
@@ -718,7 +707,7 @@ counter1 <- 1
 counter2 <- nPanel
 for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Exploitation_rates_per_species-page",iLoop,".png",sep="")
-    check_name <- SpeciesNames[counter1:counter2]  
+    check_name <- SpeciesNames[counter1:counter2]
     extractC <- dplyr::filter(df, Group %in% check_name)
     ggplot(data = extractC, mapping = aes(x = Year, y = exploit_rate)) +
       geom_line(color = tscolor, size = 1.2) +
@@ -732,7 +721,7 @@ for (iLoop in 1:nLoop) {
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 }
@@ -740,7 +729,7 @@ for (iLoop in 1:nLoop) {
 ```
 
 ## Effort and Catch per unit effort (CPUE) time series
-by gear type, vessel size 
+by gear type, vessel size
 Need real world data to calculate relevant information
 ```{r}
 
@@ -750,18 +739,18 @@ catch_in_effort_file <- 0  # 1 = catch in effort file, 0 = in a separate file
 
 if (load_effort_data > 0) {
   EffortFile <- paste(mainDir,"/",InputsubDir,"/","effort_annual.csv",sep="")
-  dfEffort <- read.csv(EffortFile, header = FALSE)  
+  dfEffort <- read.csv(EffortFile, header = FALSE)
   # Assumes column 1 is year, column 2 is FleetName, column 3 is effort in days
-  
+
   # Load catch by metier data if required
   if (catch_in_effort_file < 1){
     CatchFleetFile <- paste(mainDir,"/",InputsubDir,"/","catch_fleet_annual.csv",sep="")
-    dfCatchFleet <- read.csv(CatchFleetFile, header = FALSE)  
+    dfCatchFleet <- read.csv(CatchFleetFile, header = FALSE)
     # Assumes column 1 is year, column 2 is FleetName, column 3 is catch in tonnes
   }
 
   if (catch_in_effort_file < 1){
-    dfFleetDat <- merge(dfEffort, dfCatchFleet, by=c("Year","Fleet.name"))
+    dfFleetDat <- merge(dfEffort, dfCatchFleet, by=c("Year","FleetName"))
   } else {
     dfFleetDat <- dfEffort
   }
@@ -772,61 +761,61 @@ if (load_effort_data > 0) {
   ymax <- 1.05 * max(dfFleetDat$Effort, na.rm = TRUE)
   ymin <- 0.95 * min(dfFleetDat$Effort, na.rm = TRUE)
   if (ymin < 0) { ymin <- 0 }
-  
+
   # plot trends in exploitation rate
   nLoop <- ceiling (nFName / nPanel)
   counter1 <- 1
   counter2 <- nPanel
   for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Total_Effort_per_fleet-page",iLoop,".png",sep="")
-    check_name <- FleetNames[counter1:counter2]  
-    extractC <- dplyr::filter(dfFleetDat, Fleet.name %in% check_name)
+    check_name <- FleetNames[counter1:counter2]
+    extractC <- dplyr::filter(dfFleetDat, FleetName %in% check_name)
     ggplot(data = extractC, mapping = aes(x = Year, y = Effort)) +
-      geom_line(color = tscolor, size = 1.2) + 
+      geom_line(color = tscolor, size = 1.2) +
       #geom_point() +
-      #ylim(ymin, ymax) + 
+      #ylim(ymin, ymax) +
       expand_limits(y=0) +
       theme(legend.position = "none")+
       labs(
         title = "Effort by fleet",
         x = "Year",
         y = "Effort (days)") +
-    facet_wrap(~ Fleet.name, scales = 'free') +
+    facet_wrap(~ FleetName, scales = 'free') +
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
   }
-  
+
   # Plot by CPUE
   ymax <- 1.05 * max(dfFleetDat$CPUE, na.rm = TRUE)
   ymin <- 0.95 * min(dfFleetDat$CPUE, na.rm = TRUE)
   if (ymin < 0) { ymin <- 0 }
-  
+
   nLoop <- ceiling (nFName / nPanel)
   counter1 <- 1
   counter2 <- nPanel
   for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Total_CPUE_per_fleet-page",iLoop,".png",sep="")
-    check_name <- FleetNames[counter1:counter2]  
-    extractC <- dplyr::filter(dfFleetDat, Fleet.name %in% check_name)
+    check_name <- FleetNames[counter1:counter2]
+    extractC <- dplyr::filter(dfFleetDat, FleetName %in% check_name)
     ggplot(data = extractC, mapping = aes(x = Year, y = CPUE)) +
-      geom_line(color = tscolor, size = 1.2) + 
+      geom_line(color = tscolor, size = 1.2) +
       #geom_point() +
-      #ylim(ymin, ymax) + 
+      #ylim(ymin, ymax) +
       expand_limits(y=0) +
       theme(legend.position = "none")+
       labs(
         title = "CPUE by fleet",
         x = "Year",
         y = "CPUE (tonnes/days)") +
-    facet_wrap(~ Fleet.name, scales = 'free') +
+    facet_wrap(~ FleetName, scales = 'free') +
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 
@@ -835,10 +824,10 @@ if (load_effort_data > 0) {
 
 ```
 
-# Economic Indicators  
+# Economic Indicators
 ## Often not collected or not regualrly and not all at the same scale as the fishery (often only regional or national) - location for future refinement into the future
 
-## Cost of fishing  
+## Cost of fishing
 ```{r}
 
 # Total cost - Use fixed costs x effort.
@@ -848,7 +837,7 @@ if (load_effort_data > 0) {
 ```
 
 
-## Total value of fishery  
+## Total value of fishery
 # Using prices (e.g. beach prices) - this is not EwE model generated so use value from EwE
 ```{r}
 
@@ -859,8 +848,8 @@ if (value_from_file > 0) {
 
   ValueFile <- paste(mainDir,"/",InputsubDir,"/","value_annual.csv",sep="")
   value <- read.csv(ValueFile, header = T, skip = skip_this, check.names = FALSE) #   because csv file has headers - will need to skip the first 9 rows; check names makes sure an X isn't added before the number for the species
-  names(value)[1] <- 'Year'   # changes the name of the first column to year instead of 
-  val <- as.data.frame(value) %>% 
+  names(value)[1] <- 'Year'   # changes the name of the first column to year instead of
+  val <- as.data.frame(value) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "value_tonnes")
   val$value_tonnes <- area_model * val$value_tonnes / 1000.0
   dfvalue <- full_join(val, id2) # data frame with biomass, catch and species names
@@ -870,14 +859,14 @@ if (value_from_file > 0) {
   dfvalue <- merge(df, Price_ID, by = c("Group"))
   dfvalue$value_tonnes <- dfvalue$landings_tonnes * Price / 1000.0
 }
-  
+
 #Value = $ per kilo of species
 nLoop <- ceiling (nSPName / nPanel)
 counter1 <- 1
 counter2 <- nPanel
 for (iLoop in 1:nLoop) {
     outPlotName <- paste(OutDir,"/Value_per_species-page",iLoop,".png",sep="")
-    check_name <- SpeciesNames[counter1:counter2]  
+    check_name <- SpeciesNames[counter1:counter2]
     extractC <- dplyr::filter(dfvalue, Group %in% check_name)
     ggplot(data = extractC, mapping = aes(x = Year, y = value_tonnes)) +
       geom_line(color = tscolor, size = 1.2) +
@@ -891,7 +880,7 @@ for (iLoop in 1:nLoop) {
     theme(axis.text.y=element_text(size=8),axis.text.x=element_text(size=8), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 
     ggsave(file=outPlotName)
-    
+
     counter1 <- counter1 + nPanel
     counter2 <- counter2 + nPanel
 }
@@ -910,9 +899,10 @@ ggplot(gvp_calc, aes (x = Year, y = GVP)) +
     title = "GVP time series",
     x = "Year",
     y = "GVP (Thousand $)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_gvp_indx)
+
 ```
 
 ## Fisheries' ecconomic contribution - This is not EwE model generated.
@@ -921,7 +911,7 @@ ggsave(file=plot_gvp_indx)
 # Total economic GDP contribution
 
 
-# Employment - fishing sector 
+# Employment - fishing sector
 # Assumes the total cost of fishing - assume x number of jobs per gear type
 
 
@@ -930,7 +920,7 @@ ggsave(file=plot_gvp_indx)
 
 # Ecological Indicators - overall
 
-## Calculate biomass time series  
+## Calculate biomass time series
 1/(biomass/landings)
 ```{R}
 # collate data
@@ -942,7 +932,7 @@ biomass_calc_tmp <-df %>% dplyr::filter(landings_tonnes > 0)
 biomass_calc <- biomass_calc_tmp %>%
   group_by(Year) %>%
   dplyr::summarise(TotAvailBio = sum(biomass_tonnes), TotLandings = sum(landings_tonnes))
-biomass_calc$bioindx  <- 1.0 / (biomass_calc$TotAvailBio / biomass_calc$TotLandings) 
+biomass_calc$bioindx  <- 1.0 / (biomass_calc$TotAvailBio / biomass_calc$TotLandings)
 
 # plot the index
 plot_biomass_indx <- paste(OutDir,"/one_on_bio_on_landings_indx.png",sep="")
@@ -952,18 +942,18 @@ ggplot(biomass_calc, aes (x = Year, y = bioindx)) +
     title = "1/(Biomass/Landings) time series",
     x = "Year",
     y = "1/(Biomass/Landings)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_biomass_indx)
 
 ```
 
 ## Biomass ratios (piscivorous:zooplanktivorous fish; pelagic:demersal)
-# Read in classificaiton from file - or should we use Reg Watson's classification? 
+# Read in classificaiton from file - or should we use Reg Watson's classification?
 # Then calculate the ratios
 
 # Assumes use biomass_annual.csv and assume speices-list.csv contains categorization of the groups according to size and calculate (as per FISHMIP calculations)
-```{R}
+```{r}
 # collate data
 #head(df)
 
@@ -993,7 +983,7 @@ ggplot(PDind, aes (x = Year, y = PDb), ) +
     subtitle = "Dark line is biomass, light line is catch",
     x = "Year",
     y = "Pelagic:Demersal"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_pd_indx)
 
@@ -1024,7 +1014,7 @@ ggplot(PZind, aes (x = Year, y = PZb), ) +
     subtitle = "Dark line is biomass, light line is catch",
     x = "Year",
     y = "Piscivore:Zooplanktivore"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_pd_indx)
 
@@ -1072,16 +1062,16 @@ windowB <- 5
 
 funMeanA <- function(x) zoo::rollmean(x, windowA, na.pad=TRUE, align="right")
 funMeanB <- function(x) zoo::rollmean(x, windowB, na.pad=TRUE, align="right")
-funSDA <- function(x) zoo::rollapply(x, width = windowA, FUN = sd, fill=NA, align='right') 
-funSDB <- function(x) zoo::rollapply(x, width = windowB, FUN = sd, fill=NA, align='right') 
+funSDA <- function(x) zoo::rollapply(x, width = windowA, FUN = sd, fill=NA, align='right')
+funSDB <- function(x) zoo::rollapply(x, width = windowB, FUN = sd, fill=NA, align='right')
 
-dfoutSDA <- SP_as_col %>% 
+dfoutSDA <- SP_as_col %>%
   mutate_at(NameExT, funSDA)
-dfoutSDB <- SP_as_col %>% 
+dfoutSDB <- SP_as_col %>%
   mutate_at(NameExT, funSDB)
-dfoutMA <- SP_as_col %>% 
+dfoutMA <- SP_as_col %>%
   mutate_at(NameExT, funMeanA)
-dfoutMB <- SP_as_col %>% 
+dfoutMB <- SP_as_col %>%
   mutate_at(NameExT, funMeanB)
 
 NLose <- windowA - 1
@@ -1116,7 +1106,7 @@ ggplot(data = NULL) +
     title = "Proportion of species with CV > CVtotal",
     x = "Year",
     y = "Proportion"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1150,7 +1140,7 @@ colnames(dftmp)[3] <- c("species_id")
 counter <- 0
 for (iYear in minYear:maxYear) {
   counter <- counter + 1
-  
+
   # Do biomass calculations first
   dfExtract <- dplyr::filter(dftmp, Year == iYear & PISCZOOPL %in% KeepThese)
   dfExtract$SizeCalcB <- dfExtract$biomass_tonnes * dfExtract$Linf_cm
@@ -1161,16 +1151,16 @@ for (iYear in minYear:maxYear) {
   meanAge <- sum(dfExtract$AgeB) / sum(dfExtract$biomass_tonnes)
   dfCalc$Year[counter] <- iYear
   dfCalc$meanLengthBio[counter] <- meanL
-  dfCalc$meanTLBio[counter] <- meanTL 
-  dfCalc$meanAgeBio[counter] <- meanAge 
-  
+  dfCalc$meanTLBio[counter] <- meanTL
+  dfCalc$meanAgeBio[counter] <- meanAge
+
   # Do LFI for biomass
   dfExtract <- dplyr::filter(dfExtract, PISCZOOPL %in% KeepFish)
   totbio <- sum(dfExtract$biomass_tonnes)
   dfExtract <- dplyr::filter(dfExtract, Linf_cm > 40.0)
   totLFI <- sum(dfExtract$biomass_tonnes)
   LFI <- totLFI / totbio
-  dfCalc$LFIbio[counter] <- LFI 
+  dfCalc$LFIbio[counter] <- LFI
 
   # Now do it based on landings by only including those species that are fished
   dfExtract <- dplyr::filter(dftmp, Year == iYear)
@@ -1192,16 +1182,16 @@ for (iYear in minYear:maxYear) {
   meanTL <- sum(dfExtract$TLCatch) / sum(dfExtract$landings_tonnes)
   meanAge <- sum(dfExtract$AgeC) / sum(dfExtract$landings_tonnes)
   dfCalc$meanLengthCatch[counter] <- meanL
-  dfCalc$meanTLCatch[counter] <- meanTL 
-  dfCalc$meanAgeCatch[counter] <- meanAge 
-  
+  dfCalc$meanTLCatch[counter] <- meanTL
+  dfCalc$meanAgeCatch[counter] <- meanAge
+
   # Do LFI for catch
   dfExtract <- dplyr::filter(dfExtract, PISCZOOPL %in% KeepFish)
   totbio <- sum(dfExtract$landings_tonnes)
   dfExtract <- dplyr::filter(dfExtract, Linf_cm > 40.0)
   totLFI <- sum(dfExtract$landings_tonnes)
   LFI <- totLFI / totbio
-  dfCalc$LFIcatch[counter] <- LFI 
+  dfCalc$LFIcatch[counter] <- LFI
 
 }
 
@@ -1219,7 +1209,7 @@ ggplot(dfCalc, aes (x = Year, y = meanLengthBio), ) +
     title = "Mean size time series - based on macrofauna biomass",
     x = "Year",
     y = "Size (cm)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1232,7 +1222,7 @@ ggplot(dfCalc, aes (x = Year, y = meanTLBio), ) +
     title = "Mean trophic level series - based on macrofauna biomass",
     x = "Year",
     y = "Trophic level"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1245,7 +1235,7 @@ ggplot(dfCalc, aes (x = Year, y = meanAgeBio), ) +
     title = "Mean age time series - based on macrofauna biomass",
     x = "Year",
     y = "Longevity (years)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1258,7 +1248,7 @@ ggplot(dfCalc, aes (x = Year, y = LFIbio), ) +
     title = "LFI time series - based on macrofauna biomass",
     x = "Year",
     y = "LFI"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1271,7 +1261,7 @@ ggplot(dfCalc, aes (x = Year, y = meanLengthCatch), ) +
     title = "Mean size time series - based on landings",
     x = "Year",
     y = "Size (cm)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1284,7 +1274,7 @@ ggplot(dfCalc, aes (x = Year, y = meanTLCatch), ) +
     title = "Mean trophic level series - based on landings",
     x = "Year",
     y = "Trophic level"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1297,7 +1287,7 @@ ggplot(dfCalc, aes (x = Year, y = meanAgeCatch), ) +
     title = "Mean age time series - based on landings",
     x = "Year",
     y = "Longevity (years)"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1310,7 +1300,7 @@ ggplot(dfCalc, aes (x = Year, y = LFIcatch), ) +
     title = "LFI time series - based on landings",
     x = "Year",
     y = "LFI"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -1324,17 +1314,17 @@ ggsave(file=plot_indx)
 
 ```{r}
 
-# Ryther 
+# Ryther
 dfcat <- df %>%
   group_by(Year) %>%
   dplyr::summarise(tot_catch = sum(landings_tonnes))
 dfcat$Ryther <- dfcat$tot_catch / area_model
 
-# Fogarty 
+# Fogarty
 # Start by getting the production values
 production <- mortality * biomass
 production$Year <- biomass$Year
-dfProd <- as.data.frame(production) %>% 
+dfProd <- as.data.frame(production) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "production")
 dftmp <- full_join(dfProd, id2) # Reuse old temporary df
 df1tmp <- full_join(dftmp, tl) # Reuse old temporary df
@@ -1347,12 +1337,12 @@ dftmp <- dfProd %>%
 dfLW <- full_join(dfcat, dftmp)
 dfLW$Fogarty <- 1000.0 * dfLW$Ryther / dfLW$tot_prod
 
-# Friedland 
+# Friedland
 # Calculate Chl a
 if (chl_from_file < 1) {
   X_CN <- 5.7 # Redfield assumption
   X_CHLN <- 7.0 # Assumed ratio of N:Chl a
-  dftmp <- as.data.frame(biomass) %>% 
+  dftmp <- as.data.frame(biomass) %>%
     pivot_longer(-Year, names_to = "species_id", values_to = "biomass_per_area")
   dftmp1 <- full_join(dftmp, id2) # Reuse old temporary df
   dftmp <- full_join(dftmp1, tl) # Reuse old temporary df
@@ -1361,24 +1351,24 @@ if (chl_from_file < 1) {
   dfProd$Chl <- 1000000000.0 * ((dfProd$biomass_per_area / (X_CN * 20.0)) / X_CHLN)    # From wet weight to N to Chl a
   thislinetype <- "dashed"
 } else {
- dfProd <- dfChl 
+ dfProd <- dfChl
  thislinetype <- "solid"
 }
 
 dftmp <- dfProd %>%
   group_by(Year) %>%
-  dplyr::summarise(tot_chl = sum(Chl))  # Already per km2 
+  dplyr::summarise(tot_chl = sum(Chl))  # Already per km2
 dfLW <- full_join(dfLW, dftmp)
 dfLW$Friedland <- 1000.0 * dfLW$Ryther / dfLW$tot_prod
 
 # Plots
 outaplot <- paste(OutDir,"/Ryther_Friedland_Fogarty_indx.png",sep="")
 check_name <- c("Ryther", "Friedland", "Fogarty")
-dfLWplot <- dfLW %>% 
+dfLWplot <- dfLW %>%
   pivot_longer(-Year, names_to = "Index")
-dfLW <- dplyr::filter(dfLWplot, Index %in% check_name) 
+dfLW <- dplyr::filter(dfLWplot, Index %in% check_name)
 ggplot(dfLW, aes(x=Year, y=value, group=Index)) +
-  geom_line(aes(linetype = Index, colour=Index), size = 2) + 
+  geom_line(aes(linetype = Index, colour=Index), size = 2) +
   geom_hline(yintercept = 1, colour = "gray47", linetype="dashed", size=0.5) +
   theme_bw() + theme(axis.title=element_text(size=14,face="bold")) +
   ggtitle("Link and Watson system capacity indices") +
@@ -1405,31 +1395,31 @@ YearNum <- as.data.frame(YN)
 cumRes <- data.frame(matrix(0, ncol = 8, nrow = nYear))
 rownames(cumRes)[1:nYear] <- YearNum[,1]
 colnames(cumRes)[1:8] <- c("Year","infTL","inflB","steepness","b1","b2","c","d")
-  
+
 dfcreated <- 0
-  
+
 for (iYear in minYear:maxYear) {
   thisYear <- iYear - minYear + 1
-    
+
    # Filter by year
    dfCD <- filter(dfcat, Year == iYear)
-    
+
   # sort by TL ascending
   dfCDsorted <- dfCD[order(dfCD$trophic_level), ]
-    
-  # calculate cumulative catch 
+
+  # calculate cumulative catch
   dfCDsorted$cumB <- cumsum(dfCDsorted$landings_tonnes)
-    
+
   # TotalBiomass
   TotB <- max(dfCDsorted$cumB)
-    
+
   # Now make column PropCumB
   dfCDsorted$PropCumB <- dfCDsorted$cumB / TotB
-    
+
   # Fit five-parameter regression - using drc
   fm1 <- drm(PropCumB~trophic_level, data=dfCDsorted, fct=baro5())
   dfCDsorted$curvefit = predict(fm1)
-    
+
   # Store results for sorted materials
   if (dfcreated == 0) {
     dfBioResults <- dfCDsorted
@@ -1437,16 +1427,16 @@ for (iYear in minYear:maxYear) {
   } else {
     dfBioResults <-rbind(dfBioResults, dfCDsorted)
   }
-    
+
   #plot(fm1)
   #ggplot(dfCDsorted, aes(x = TL)) +
   #  geom_point(aes(y = cumB), color ="deepskyblue3") +
   #  geom_point(aes(y = cumC), color ="darkorange") +
   #  geom_line(aes(y = curvefit), size = 1)
-    
+
   # Calculate - B inflection and TL inflection (only do it for catch if non-zero)
   # This involves finding when the second derivative of the curve = 0
-  # However the "e" coeffient given by fm1 is the inflection TL so simply read off the 
+  # However the "e" coeffient given by fm1 is the inflection TL so simply read off the
   # inflection point B using that TL value
   infTL <- fm1$fit$par[5]
   b1 <- fm1$fit$par[1]
@@ -1472,67 +1462,67 @@ for (iYear in minYear:maxYear) {
   cumRes[thisYear,6] <- b2
   cumRes[thisYear,7] <- c
   cumRes[thisYear,8] <- d
-    
+
 }
-  
+
 
 p0 <- ggplot(dfBioResults, aes(x = trophic_level, y = curvefit)) +
   geom_point(aes(colour = factor(Year))) +
   geom_line(aes(colour = factor(Year))) +
   scale_color_viridis(option = "D", discrete = TRUE) +
-  theme(text = element_text(size = textsize)) 
-  
-# Plot 6 panels - the 3 indicators through time and 
-# Reproduce plots from Libralato et al 2019 
+  theme(text = element_text(size = textsize))
+
+# Plot 6 panels - the 3 indicators through time and
+# Reproduce plots from Libralato et al 2019
  # Steep vs TL
 # B vs TL
 # Steep vs B
-  
+
 # 1. infTL through time
 p1 <- ggplot(cumRes, aes(x = Year, y = infTL)) +
   geom_line(color ="deepskyblue3", size = linesize) +
-  theme(text = element_text(size = textsize)) 
-  
+  theme(text = element_text(size = textsize))
+
 # 2. infB through time
 p2 <- ggplot(cumRes, aes(x = Year, y = inflB)) +
   geom_line(color ="darkorange", size = linesize) +
-  theme(text = element_text(size = textsize)) 
-  
+  theme(text = element_text(size = textsize))
+
 # 3. steep through time
 p3 <- ggplot(cumRes, aes(x = Year, y = steepness)) +
   geom_line(color ="grey44", size = linesize) +
-   theme(text = element_text(size = textsize)) 
-  
+   theme(text = element_text(size = textsize))
+
 # 4. Steep vs TL
 p4 <- ggplot(cumRes, aes(x = infTL, y = steepness)) +
   geom_point() +
-  theme(text = element_text(size = textsize)) 
-  
-# 5. B vs TL 
+  theme(text = element_text(size = textsize))
+
+# 5. B vs TL
 p5 <- ggplot(cumRes, aes(x = infTL, y = inflB)) +
   geom_point() +
-  theme(text = element_text(size = textsize)) 
-  
-# 6. Steep vs B 
+  theme(text = element_text(size = textsize))
+
+# 6. Steep vs B
 p6 <- ggplot(cumRes, aes(x = inflB, y = steepness)) +
   geom_point() +
-  theme(text = element_text(size = textsize)) 
-  
+  theme(text = element_text(size = textsize))
+
 # Plot Catch through time too
 nSP <- length(unique(dfcat$Group))
 colPalette <- get_palette(c("#00AFBB", "#E7B800", "#FC4E07"), nSP)
-  
+
 pC <- ggplot(dfcat, aes(x = Year, y = landings_tonnes, fill = Group, order = Group)) +
   geom_bar(colour = "black", stat="identity", size = 0.1) +
   scale_fill_manual(values = colPalette) +
   labs(x="Years", y = "Catch") +  theme(legend.position = "none", text = element_text(size = 12))
-  
+
 # Plot Biomass
 pB <- ggplot(dfcat, aes(x = Year, y = biomass_tonnes, fill = Group, order = Group)) +
   geom_bar(colour = "black", stat="identity", size = 0.1) +
   scale_fill_manual(values = colPalette) +
   labs(x="Years", y = "Biomass") +  theme(legend.position = "none", text = element_text(size = 12))
-  
+
 # Final panel plot
 outPlotName <- paste(OutDir,"/Cumulative-plots-Catch.png",sep="")
 
@@ -1540,12 +1530,12 @@ outPlotName <- paste(OutDir,"/Cumulative-plots-Catch.png",sep="")
 # returns a gtable (gt)
 #gt <- arrangeGrob(p0,   # Big # cumBio vs TL
 #                  pC, pB, p1, p2, p3, p4, p5, p6, # All other plots
-#                  ncol = 2, nrow = 6, 
+#                  ncol = 2, nrow = 6,
 #                  layout_matrix = rbind(c(1,1), c(2,2), c(3,3), c(4,5), c(6,7), c(8,9)))
 # Add labels to the arranged plots
 gt <- arrangeGrob(p0,   # Big # cumBio vs TL
                   pC, p1, p2, p3, p4, p5, p6, # All other plots
-                  ncol = 2, nrow = 6, 
+                  ncol = 2, nrow = 6,
                   layout_matrix = rbind(c(1,1), c(2,2), c(3,4), c(5,6), c(7,8)))
 # Add labels to the arranged plots
 p <- as_ggplot(gt)                                 # transform to a ggplot
@@ -1557,7 +1547,7 @@ dev.off()
 
 ```
 
-# Network analysis 
+# Network analysis
 THis is currently not tracked dynamically - calculate separate and put result into Species_ID.csv
 
 # Greenband
@@ -1573,7 +1563,7 @@ idRef <- idRef %>% dplyr::filter(IsDetritus < 1)
 idRef$logP <- log10(idRef$RefP)
 idRef$logB <- log10(idRef$RefB)
 linreg <- lm(formula = logB ~ logP, data = idRef)
-matrix_coef <- summary(linreg)$coefficients 
+matrix_coef <- summary(linreg)$coefficients
 reg_slope <- round(matrix_coef[2,1],3)
 reg_const <- round(matrix_coef[1,1],3)
 band_slope <- reg_slope + 1.0   # This is the slope of the grend band for the rest of the work
@@ -1591,12 +1581,12 @@ lymax <- log10(1e+5)
 lxmax <- log10(1e+5)
 
 outaplot <- paste(OutDir,"/Green_Band_Reference_Plot.png",sep="")
-ggplot(data = idRef, aes(x = RefP, y = RefB)) + 
+ggplot(data = idRef, aes(x = RefP, y = RefB)) +
     geom_point() +
     geom_smooth(method='lm') +
     scale_x_log10(limits=c(xmin, xmax)) + scale_y_log10(limits=c(ymin, ymax)) +
     labs(x="Production", y = "Biomass") +
-    annotate("text", x=1e-4, y=3e+4, label= lm_equation) + 
+    annotate("text", x=1e-4, y=3e+4, label= lm_equation) +
     annotate("text", x = 1e-4, y=1e+4, label = lm_R2) +
     theme(axis.text=element_text(size=16,face="bold"), axis.title=element_text(size=20,face="bold"))
 ggsave(file=outaplot)
@@ -1604,10 +1594,10 @@ ggsave(file=outaplot)
 # Get production once fished
 production <- mortality * biomass
 production$Year <- biomass$Year
-dfProd <- as.data.frame(production) %>% 
+dfProd <- as.data.frame(production) %>%
   pivot_longer(-Year, names_to = "species_id", values_to = "Production")
 dftmp <- full_join(dfProd, id2) # Reuse old temporary df
-dfBand <- full_join(dftmp, df) 
+dfBand <- full_join(dftmp, df)
 dfBand <- dfBand %>% dplyr::filter(Class_Code > 0)
 
 # Rate in comparison to green band
@@ -1620,65 +1610,66 @@ dfBand <- dfBand %>% dplyr::filter(Class_Code > 0)
 # Light 1 - L
 # Acceptable 2 - A
 # Fail 3 - F
-  
+
 dfBand$MaxAllow <- 0.5 * dfBand$Production
 dfBand$MaxGreenBand <- dfBand$Production ^ band_slope
 dfBand$MinGreenBand <- dfBand$MaxGreenBand * 0.01
 dfBand$RealMax <- ifelse(dfBand$MaxAllow < dfBand$MaxGreenBand, dfBand$MaxAllow , dfBand$MaxGreenBand)
 dfBand$RealMin <- ifelse(dfBand$MaxAllow < dfBand$MinGreenBand, dfBand$MaxAllow , dfBand$MinGreenBand)
 dfBand$DistortScore <- ifelse(dfBand$catch_tonnes < dfBand$RealMin, "L", (ifelse(dfBand$catch_tonnes >= dfBand$RealMax, "F", "A")))
-  
+
 dfScored <- merge(dfBand, dfRef, by=c("species_id"))
 names(dfScored)[names(dfScored) == "species_id.x"] <- "species_id"
 names(dfScored)[names(dfScored) == "Classification.x"] <- "Classification"
 names(dfScored)[names(dfScored) == "Class_Code.x"] <- "Class_Code"
 
 dfScored$Rel_B <- dfScored$biomass_tonnes / dfScored$RefBo
-dfScored$Min_B <- ifelse(dfScored$Class_Code == 1, 0.5, 
-                           (ifelse(dfScored$Class_Code == 2, 0.3, 
-                                   (ifelse(dfScored$Class_Code == 3, 0.35, 
-                                           (ifelse(dfScored$Class_Code == 4, 0.2, 
-                                                   (ifelse(dfScored$Class_Code == 5, 0.4, 
-                                                           (ifelse(dfScored$Class_Code == 6, 0.4, 0.6)))))))))))
-dfScored$Max_B <- ifelse(dfScored$Class_Code == 1, 0.7, 
-                           (ifelse(dfScored$Class_Code == 2, 0.6, 
-                                   (ifelse(dfScored$Class_Code == 3, 0.4, 
-                                           (ifelse(dfScored$Class_Code == 4, 0.4, 
-                                                   (ifelse(dfScored$Class_Code == 5, 0.5, 
-                                                           (ifelse(dfScored$Class_Code == 6, 0.5, 0.7)))))))))))
-dfScored$B_Score <- ifelse(dfScored$Rel_B > dfScored$Max_B, "L", (ifelse(dfScored$Rel_B <= dfScored$Min_B, "F", "A")))
-  
+dfScored$Min_B <- ifelse(dfScored$Class_Code == 1, 0.5,
+                  ifelse(dfScored$Class_Code == 2, 0.3,
+                  ifelse(dfScored$Class_Code == 3, 0.35,
+                  ifelse(dfScored$Class_Code == 4, 0.2,
+                  ifelse(dfScored$Class_Code == 5, 0.4,
+                  ifelse(dfScored$Class_Code == 6, 0.4, 0.6))))))
+dfScored$Max_B <- ifelse(dfScored$Class_Code == 1, 0.7,
+                  ifelse(dfScored$Class_Code == 2, 0.6,
+                  ifelse(dfScored$Class_Code == 3, 0.4,
+                  ifelse(dfScored$Class_Code == 4, 0.4,
+                  ifelse(dfScored$Class_Code == 5, 0.5,
+                  ifelse(dfScored$Class_Code == 6, 0.5, 0.7))))))
+
+dfScored$B_Score <- ifelse(dfScored$Rel_B > dfScored$Max_B, "L", ifelse(dfScored$Rel_B <= dfScored$Min_B, "F", "A"))
+
 # Assumes Thresholds
-# 
+#
 #  CLass    ID    Min   Max
 #
-# Vulnerable  1   0.5   0.7  
+# Vulnerable  1   0.5   0.7
 # Habitat     2   0.3   0.6
 # Byproduct   3   0.35  0.4
 # Bycatch     4   0.2   0.4
 # Target      5   0.4   0.5
 # Robust      6   0.4   0.5
 # Hub         7   0.6   0.7
-  
+
 # Aggregate Results
 dfAggScore_Distort <- dfScored %>% dplyr::count(Year, DistortScore)
 dfAggScore_B <- dfScored %>% dplyr::count(Year, B_Score)
-  
+
 dfAggScore_Distort <- dfAggScore_Distort %>% dplyr::filter(!is.na(DistortScore))
 dfAggScore_B <- dfAggScore_B %>% dplyr::filter(!is.na(B_Score))
-  
+
 # Plot Scores through time - as bar plot
 ggplot(data = dfAggScore_Distort, aes(x = Year, y = n, fill = DistortScore)) + geom_bar(colour = "black", stat="identity", size = 0.1) +
     scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + theme_bw() +
     labs(x="Years", y = "Ratings") +
     theme(axis.text=element_text(size=16,face="bold"), axis.title=element_text(size=20,face="bold"))
-  
+
 # Plot Scores through time - as bar plot
 ggplot(data = dfAggScore_B, aes(x = Year, y = n, fill = B_Score)) + geom_bar(colour = "black", stat="identity", size = 0.1) +
     scale_fill_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) + theme_bw() +
     labs(x="Years", y = "Ratings") +
     theme(axis.text=element_text(size=16,face="bold"), axis.title=element_text(size=20,face="bold"))
- 
+
 Bounds <- data.frame(matrix(0, ncol = 6, nrow = 10))
 colnames(Bounds)[1:6] <- c("P","MaxAllow","MaxGreenBand","MinGreenBand","MinC","MaxC")
 listP <- c(1.00E-19, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000)
@@ -1688,7 +1679,7 @@ Bounds$MaxGreenBand <- Bounds$P ^ band_slope
 Bounds$MinGreenBand <- Bounds$MaxGreenBand * 0.01
 Bounds$MaxC <- ifelse(Bounds$MaxAllow < Bounds$MaxGreenBand, Bounds$MaxAllow, Bounds$MaxGreenBand)
 Bounds$MinC <- ifelse(Bounds$MaxAllow < Bounds$MinGreenBand, Bounds$MaxAllow, Bounds$MinGreenBand)
-BoundsMelt <- melt(Bounds,"P") 
+BoundsMelt <- melt(Bounds,"P")
 names(BoundsMelt)[2] <- 'Variables'
 names(BoundsMelt)[3] <- 'CValue'
 
@@ -1696,7 +1687,7 @@ nSpCode <- max(dfScored$Class_Code)
 for (i in 1:nSpCode) {
   dfThisCode <- dfScored %>% dplyr::filter(Class_Code == i)
   outPlotName <- paste(OutDir,"/GreenBand-",dfThisCode$Classification[1],".png",sep="")
-  
+
   dfMin <- BoundsMelt %>% dplyr::filter(Variables == "MinC")
   dfMax <- BoundsMelt %>% dplyr::filter(Variables == "MaxC")
 
@@ -1704,8 +1695,8 @@ for (i in 1:nSpCode) {
   #xmin <- min(dfThisCode$P) * 0.1
   #ymax <- max(dfThisCode$C) * 10.0
   #xmax <- max(dfThisCode$P) * 10.0
-  
-  ggplot(data = dfThisCode, aes(x = Production, y = catch_tonnes)) + 
+
+  ggplot(data = dfThisCode, aes(x = Production, y = catch_tonnes)) +
     geom_point(data = dfThisCode, aes(size = Year, color = Group)) +
     geom_line(data = dfThisCode, aes(color = Group)) +
     geom_line(data = dfMin, aes(x = P, y = CValue), linetype = "dashed", color = "black") +
@@ -1714,9 +1705,9 @@ for (i in 1:nSpCode) {
     scale_x_log10(limits=c(xmin, xmax)) + scale_y_log10(limits=c(ymin, ymax)) +
     labs(x="Production", y = "Catch") +
     theme(axis.text=element_text(size=16,face="bold"), axis.title=element_text(size=20,face="bold"))
-  
+
   ggsave(file=outPlotName)
-  
+
 }
 ```
 
@@ -1753,7 +1744,7 @@ nYear <- maxYear - minYear + 1
 nSP <- length(unique(df$species_id))
 Gaoindx <- data.frame(matrix(0, ncol = 7, nrow = nYear))
 colnames(Gaoindx)[1:7] <- c("Year","Gao_density","Gao_s","Gao_H","Gao_indx","resil_H","GaoScore")
-rownames(Gaoindx)[1:nYear] <- seq(minYear, maxYear, by=1) 
+rownames(Gaoindx)[1:nYear] <- seq(minYear, maxYear, by=1)
 dfDeg <- data.frame(matrix(0, ncol = 3, nrow = nSP))
 colnames(dfDeg)[1:3] <- c("species_id","Din","Dout")
 
@@ -1769,28 +1760,28 @@ for (iYear in minYear:maxYear) {
     bioPred <- dfPred$rel_B
     dietData <- newQ * bioPred
   }
-    
-  # Calculate Degree in and Degree out
-  gg <- network(dietData, directed=TRUE, loops=TRUE, vertex.names=nodes)  # Create network from dietData
+  nodes <- rownames(dietData)## check this with Beth. if this TRUE need to be put out of the loop
+  ## Calculate Degree in and Degree out
+  gg <- network(dietData, directed=TRUE, loops=TRUE, multiple=TRUE, vertex.names=nodes)  # Create network from dietData
   gn <- asIgraph(gg, amap=rules)
   l <- asDF(gn)
   str(l)
   l$edges
   l$vertexes
   g <- asIgraph(l$edges, vertices=l$vertexes, directed=TRUE)
-  set_vertex_attr(g, "label", value=l$vertexes[,2])
+  set_vertex_attr(g, "label", value = l$vertexes[,2])
   edges <- get.edgelist(g)   # Can also be extracted using E(g)
   nodes <- V(g)$vertex.names    # Name of vertices
   food_tidy <- as_tbl_graph(g, directed = TRUE)
   centRes <- centrality(food_tidy)
   d_in <- degree(g, mode = "in", normalized = FALSE)
   d_out <- degree(g, mode = "out", normalized = FALSE)
-    
+
   # Store value
   dfDeg$species_id <- seq(1, nSP, by=1)
   dfDeg$Din <- d_in
   dfDeg$Dout <- d_out
- 
+
   # Calculate H
   GaoStep1 <- merge(dftmp, dfDeg, by=c("species_id")) # intentionally reused
   GaoStep1$WgtDin <- GaoStep1$Din * GaoStep1$biomass_tonnes / area_model
@@ -1811,7 +1802,7 @@ for (iYear in minYear:maxYear) {
   Gao_s <- abs(Gao_meanWDIWDO-(Gao_meanWgtDin*Gao_meanWgtDout))/(Gao_sdWgtDin*Gao_sdWgtDout)
   Gao_H <- (Gao_sdWgtDout*Gao_sdWgtDin)/Gao_density
   Gindx <- Gao_density+Gao_H*Gao_s
-  
+
   Gaoindx[thisYear,1] <- iYear
   Gaoindx[thisYear,2] <- Gao_density
   Gaoindx[thisYear,3] <- Gao_s
@@ -1820,16 +1811,16 @@ for (iYear in minYear:maxYear) {
 
   x <- Gao_s
   H <- x*x*c_coefft-b_coefft*x+a_coefft
-  
+
   Gaoindx[thisYear,6] <- H
-  # Do scoring of result with respect to resilience rating  
+  # Do scoring of result with respect to resilience rating
   GaoScore <- ifelse (Gao_s > s_ref, "A",(ifelse(Gao_H < H, "F", (ifelse(Gao_H < H_ref, "M", "A")))))
 
   Gaoindx[thisYear,7] <- GaoScore
 }
 
 # Get refrence line for the plot
-x <- seq(0.01, 6.95, by=0.01) 
+x <- seq(0.01, 6.95, by=0.01)
 n <- length(x)
 H <- x*x*c_coefft-b_coefft*x+a_coefft
 gao_ref_pts <- data.frame(matrix(0, ncol = 2, nrow = n))
@@ -1870,7 +1861,7 @@ ggsave(file=outPlotName)
 ## Exploitation status- FSSI
 Look at Blim (overfished) - so can use the calc step in the composite also do calc vs Btarg too composite index
 Look at F vs Ftarg (overfishing)
-Count of species in each state 
+Count of species in each state
 
 Index Scoring Methodology
 Each quarter, NOAA Fisheries calculates an Fish Stock Sustainability Index score, incorporating information from new stock assessments and stock status determinations. The index is calculated on a 1,000 point scale using the following methodology:
@@ -1903,11 +1894,11 @@ dfFSSI$Rel_B <- dfFSSI$biomass_tonnes / dfFSSI$RefBo
 dfFSSI$U<- dfFSSI$catch_tonnes / dfFSSI$biomass_tonnes
 dfFSSI$Utarg <- 0.5 * dfFSSI$RefM
 dfFSSI$Blim <- ifelse(dfFSSI$Class_Code < 7, 0.2, 0.4)
-dfFSSI$Btarg <- ifelse(dfFSSI$Class_Code == 1, 0.4, 
-                           (ifelse(dfFSSI$Class_Code == 2, 0.6, 
-                                   (ifelse(dfFSSI$Class_Code == 3, 0.4, 
-                                           (ifelse(dfFSSI$Class_Code == 4, 0.4, 
-                                                   (ifelse(dfFSSI$Class_Code == 5, 0.48, 
+dfFSSI$Btarg <- ifelse(dfFSSI$Class_Code == 1, 0.4,
+                           (ifelse(dfFSSI$Class_Code == 2, 0.6,
+                                   (ifelse(dfFSSI$Class_Code == 3, 0.4,
+                                           (ifelse(dfFSSI$Class_Code == 4, 0.4,
+                                                   (ifelse(dfFSSI$Class_Code == 5, 0.48,
                                                            (ifelse(dfFSSI$Class_Code == 6, 0.5, 0.7)))))))))))
 dfFSSI$BtargB <- dfFSSI$Btarg * 0.8
 
@@ -1918,12 +1909,12 @@ dfFSSI$B_Score4 <- ifelse(dfFSSI$Rel_B > dfFSSI$Btarg, 1, 0)
 dfFSSI$B_Score5 <- ifelse(dfFSSI$Rel_B > dfFSSI$BtargB, 1, 0)
 dfFSSI$ScoreStatus <- ifelse(dfFSSI$Rel_B > dfFSSI$Btarg, "L", (ifelse(dfFSSI$Rel_B <= dfFSSI$Blim, "F", "A")))
 
-  
+
 # Assumes Thresholds
-# 
+#
 #  CLass    ID    Blim  Btarg
 #
-# Vulnerable  1   0.2   0.4  
+# Vulnerable  1   0.2   0.4
 # Habitat     2   0.2   0.6
 # Byproduct   3   0.2   0.4
 # Bycatch     4   0.2   0.4
@@ -1951,7 +1942,7 @@ ggplot(dfAggFSSI, aes (x = Year, y = Rel_FSSI), ) +
     subtitle = notemsg,
     x = "Year",
     y = "Relative FSSI"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -2014,22 +2005,22 @@ for (iYear in minYear:maxYear) {
   extractdf <- dfComp %>% dplyr::filter(Year == iYear)
   dftmp <- merge(extractdf, dfScore, by=c("CombinedScore"))  # Intentional reuse
   dftmp$FinalScore <- paste(dftmp$Classification,"-",dftmp$CombinedScore, sep="")
-  
-  nClassScores <- dftmp %>% 
+
+  nClassScores <- dftmp %>%
     group_by(CombinedScore,Classification) %>%
     dplyr::summarise(ScoreStep1 = sum(ClassScoreVal))
   dftmp1 <- merge(nClassScores, dfClassScore, by=c("Classification")) # Intentional reuse
   dfCalc <- merge(dftmp1, nPerClass,  by=c("Classification"))
   dfCalc$WgtVal <- dfCalc$ScoreStep1 * dfCalc$ClassScoreVal / dfCalc$n
-  
+
   dfGao <- Gaoindx %>% dplyr::filter(Year == iYear)
   GaoState <- dfGao$GaoScore
   resilWgt <- ifelse(GaoState == "A", 1.0, (ifelse(GaoState == "M", 0.8, 0.5)))
   ansScore <- sum(dfCalc$WgtVal) * resilWgt
-  
+
   dfCIndx[thisYear,1] <- iYear
   dfCIndx[thisYear,2] <- ansScore
-  
+
   if ( ansScore < CHeckVal[2]) {
     ansClass <- 1
   } else if ( ansScore < CHeckVal[3]) {
@@ -2050,7 +2041,7 @@ for (iYear in minYear:maxYear) {
     ansClass <- 9
   }
   dfCIndx[thisYear,3] <- ansClass
-}  
+}
 
 # Create a column of colours
 brewer.pal(10, "RdBu")
@@ -2061,14 +2052,14 @@ dfCIndx$BIndx2 <- as.integer(dfCIndx$BIndx)
 # Plot results
 plot_indx <- paste(OutDir,"/BETHI_indx.png",sep="")
 ggplot(dfCIndx, aes (x = Year, y = BIndx, colour=factor(BIndx2))) +
-  geom_point(size = 2) + 
+  geom_point(size = 2) +
   scale_colour_brewer(palette = "RdYlGn") +
   expand_limits(y=0) + expand_limits(y=10) +
   labs(
     title = "Basic Ecosystem Traits & Health Index (BI)",
     x = "Year",
     y = "BI"
-  ) + 
+  ) +
   theme(axis.text.y=element_text(size=10),axis.text.x=element_text(size=10), axis.title=element_text(size=12,face="bold"), strip.text = element_text(face="bold", size=10))
 ggsave(file=plot_indx)
 
@@ -2121,8 +2112,8 @@ for (i in 1:nSP) {
 }
 
 # Create the heatmap
-HeatmapFilename <- paste("Landings heatmap.pdf",sep="") 
-HeatmapTitle <- paste("Catch composition heatmap - catch data",sep="") 
+HeatmapFilename <- paste("Landings heatmap.pdf",sep="")
+HeatmapTitle <- paste("Catch composition heatmap - catch data",sep="")
 heatmaply(drRanked,
           xlab = "Year",
           ylab = "Species",
@@ -2133,8 +2124,8 @@ heatmaply(drRanked,
           file = HeatmapFilename
 )
 
-HeatmapFilename <- paste("Proportion of landings heatmap.pdf",sep="") 
-HeatmapTitle <- paste("Catch composition heatmap - proportion of catchh",sep="") 
+HeatmapFilename <- paste("Proportion of landings heatmap.pdf",sep="")
+HeatmapTitle <- paste("Catch composition heatmap - proportion of catchh",sep="")
 heatmaply(Prop_Catch,
           xlab = "Year",
           ylab = "Species",
@@ -2148,12 +2139,12 @@ heatmaply(Prop_Catch,
 ```
 
 
-# Percentage of species area overlapping with fisheries  
+# Percentage of species area overlapping with fisheries
 This is not EwE model generated.
 
-## Area of habitat effected by fishery  
-(a) exploited  
-(b) impacted (if not exploited directly)  
-(c) protected  
+## Area of habitat effected by fishery
+(a) exploited
+(b) impacted (if not exploited directly)
+(c) protected
 
 This is not EwE model generated.
