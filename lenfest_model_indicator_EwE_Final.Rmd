@@ -1729,7 +1729,7 @@ rules
 
                                         ## To calculate the degree in and out through time
                                         ## Load base consumption matrix
-origQ <- read.csv("consumption_matrix.csv", header = T, row.names=1)
+origQ <- read.csv("consumption_matrix.csv", header = T, row.names=1, check.names=FALSE)
 
                                         ## Calculate Gao index for that value of <s> so can check on whether above or below resilience horizon
 c_coefft <- 0.019
@@ -1756,34 +1756,28 @@ for (iYear in minYear:maxYear) {
     dftmp$rel_B <-dftmp$biomass_tonnes / dftmp$RefBo
     dftmp$rel_B[dftmp$rel_B < 0.00001] <- 0  # So ave an effect on flows of being highly depleted
     newQ <- origQ * dftmp$rel_B
-    for(iSP in i:nSP){  # Treat iSP as col_ID doing calculation on
+    dietData <- newQ * 0  ## empty matrix
+    for(iSP in 1 : nSP){  # Treat iSP as col_ID doing calculation on
         dfPred <- dftmp %>% dplyr::filter(species_id == iSP)
         bioPred <- dfPred$rel_B
-        dietData <- newQ * bioPred
+        dietData[,iSP] <- newQ[ ,iSP] * bioPred
     }
-    nodes <- rownames(dietData) ## check this with Beth. if this TRUE need to be put out of the loop
-    ## Calculate Degree in and Degree out
-    gg <- network(dietData, directed=TRUE, loops=TRUE, multiple=TRUE, vertex.names=nodes)  # Create network from dietData
-    gn <- asIgraph(gg, amap=rules)
-    l <- asDF(gn)
-    str(l)
-    l$edges
-    l$vertexes
-    g <- asIgraph(l$edges, vertices=l$vertexes, directed=TRUE)
-    set_vertex_attr(g, "label", value = l$vertexes[,2])
-    edges <- get.edgelist(g)   # Can also be extracted using E(g)
-    nodes <- V(g)$vertex.names    # Name of vertices
-    food_tidy <- as_tbl_graph(g, directed = TRUE)
-    centRes <- centrality(food_tidy)
-    d_in <- degree(g, mode = "in", normalized = FALSE)
-    d_out <- degree(g, mode = "out", normalized = FALSE)
+    nDiet <- reshape2::melt(as.matrix(dietData))
+    nDiet <- nDiet[nDiet$value != 0, ]
+    Supgraph <- graph_from_data_frame(d = nDiet)
+    set_vertex_attr(Supgraph, "label", value = l$vertexes[,2])
+    edges <- get.edgelist(Supgraph)   # Can also be extracted using E(g)
+    food_tidy <- as_tbl_graph(Supgraph, directed = TRUE)
+    centRes   <- centrality(food_tidy)
+    d_in      <- degree(Supgraph, mode = "in", normalized = FALSE)
+    d_out     <- degree(Supgraph, mode = "out", normalized = FALSE)
 
-                                        ## Store value
+    ## Store value
     dfDeg$species_id <- seq(1, nSP, by=1)
     dfDeg$Din <- d_in
     dfDeg$Dout <- d_out
 
-                                        ## Calculate H
+    ## Calculate H
     GaoStep1 <- merge(dftmp, dfDeg, by=c("species_id")) # intentionally reused
     GaoStep1$WgtDin <- GaoStep1$Din * GaoStep1$biomass_tonnes / area_model
     GaoStep1$WgtDout <- GaoStep1$Dout * GaoStep1$biomass_tonnes / area_model
@@ -1814,13 +1808,13 @@ for (iYear in minYear:maxYear) {
     H <- x*x*c_coefft-b_coefft*x+a_coefft
 
     Gaoindx[thisYear,6] <- H
-                                        ## Do scoring of result with respect to resilience rating
+    ## Do scoring of result with respect to resilience rating
     GaoScore <- ifelse (Gao_s > s_ref, "A",(ifelse(Gao_H < H, "F", (ifelse(Gao_H < H_ref, "M", "A")))))
 
     Gaoindx[thisYear,7] <- GaoScore
 }
 
-                                        ## Get refrence line for the plot
+## Get refrence line for the plot
 x <- seq(0.01, 6.95, by=0.01)
 n <- length(x)
 H <- x*x*c_coefft-b_coefft*x+a_coefft
